@@ -2,9 +2,7 @@ version: '3.1'
 
 services:
     flowise:
-        build:
-          context: .
-          dockerfile: Dockerfile
+        image: jirendaniel/chatflow:v1.0
         restart: always
         environment:
             - PORT=${PORT}
