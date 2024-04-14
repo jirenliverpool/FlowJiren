@@ -33,4 +33,4 @@ services:
             - '${PORT}:${PORT}'
         volumes:
             - ~/.flowise:/root/.flowise
-        command: /bin/sh -c "sleep 3; /usr/local/bin/flowise start"
+        command: /bin/sh -c "sleep 3; cd /usr/src/packages/server/bin && ./run start"
