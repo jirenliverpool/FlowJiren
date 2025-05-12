@@ -1,8 +1,10 @@
 import axios, { AxiosRequestConfig } from 'axios'
+import { omit } from 'lodash'
 import { Document } from '@langchain/core/documents'
 import { TextSplitter } from 'langchain/text_splitter'
 import { BaseDocumentLoader } from 'langchain/document_loaders/base'
-import { ICommonObject, INode, INodeData, INodeParams } from '../../../src/Interface'
+import { ICommonObject, IDocument, INode, INodeData, INodeOutputsValue, INodeParams } from '../../../src/Interface'
+import { handleEscapeCharacters } from '../../../src/utils'
 
 class API_DocumentLoaders implements INode {
     label: string
@@ -14,11 +16,12 @@ class API_DocumentLoaders implements INode {
     category: string
     baseClasses: string[]
     inputs?: INodeParams[]
+    outputs: INodeOutputsValue[]
 
     constructor() {
         this.label = 'API Loader'
         this.name = 'apiLoader'
-        this.version = 1.0
+        this.version = 2.0
         this.type = 'Document'
         this.icon = 'api.svg'
         this.category = 'Document Loaders'
@@ -66,6 +69,39 @@ class API_DocumentLoaders implements INode {
                     'JSON body for the POST request. If not specified, agent will try to figure out itself from AIPlugin if provided',
                 additionalParams: true,
                 optional: true
+            },
+            {
+                label: 'Additional Metadata',
+                name: 'metadata',
+                type: 'json',
+                description: 'Additional metadata to be added to the extracted documents',
+                optional: true,
+                additionalParams: true
+            },
+            {
+                label: 'Omit Metadata Keys',
+                name: 'omitMetadataKeys',
+                type: 'string',
+                rows: 4,
+                description:
+                    'Each document loader comes with a default set of metadata keys that are extracted from the document. You can use this field to omit some of the default metadata keys. The value should be a list of keys, seperated by comma. Use * to omit all metadata keys execept the ones you specify in the Additional Metadata field',
+                placeholder: 'key1, key2, key3.nestedKey1',
+                optional: true,
+                additionalParams: true
+            }
+        ]
+        this.outputs = [
+            {
+                label: 'Document',
+                name: 'document',
+                description: 'Array of document objects containing metadata and pageContent',
+                baseClasses: [...this.baseClasses, 'json']
+            },
+            {
+                label: 'Text',
+                name: 'text',
+                description: 'Concatenated string from pageContent of documents',
+                baseClasses: ['string', 'json']
             }
         ]
     }
@@ -76,6 +112,13 @@ class API_DocumentLoaders implements INode {
         const method = nodeData.inputs?.method as string
         const textSplitter = nodeData.inputs?.textSplitter as TextSplitter
         const metadata = nodeData.inputs?.metadata
+        const _omitMetadataKeys = nodeData.inputs?.omitMetadataKeys as string
+        const output = nodeData.outputs?.output as string
+
+        let omitMetadataKeys: string[] = []
+        if (_omitMetadataKeys) {
+            omitMetadataKeys = _omitMetadataKeys.split(',').map((key) => key.trim())
+        }
 
         const options: ApiLoaderParams = {
             url,
@@ -94,31 +137,56 @@ class API_DocumentLoaders implements INode {
 
         const loader = new ApiLoader(options)
 
-        let docs = []
+        let docs: IDocument[] = []
 
         if (textSplitter) {
-            docs = await loader.loadAndSplit(textSplitter)
+            docs = await loader.load()
+            docs = await textSplitter.splitDocuments(docs)
         } else {
             docs = await loader.load()
         }
 
         if (metadata) {
             const parsedMetadata = typeof metadata === 'object' ? metadata : JSON.parse(metadata)
-            let finaldocs = []
-            for (const doc of docs) {
-                const newdoc = {
-                    ...doc,
-                    metadata: {
-                        ...doc.metadata,
-                        ...parsedMetadata
-                    }
-                }
-                finaldocs.push(newdoc)
-            }
-            return finaldocs
+            docs = docs.map((doc) => ({
+                ...doc,
+                metadata:
+                    _omitMetadataKeys === '*'
+                        ? {
+                              ...parsedMetadata
+                          }
+                        : omit(
+                              {
+                                  ...doc.metadata,
+                                  ...parsedMetadata
+                              },
+                              omitMetadataKeys
+                          )
+            }))
+        } else {
+            docs = docs.map((doc) => ({
+                ...doc,
+                metadata:
+                    _omitMetadataKeys === '*'
+                        ? {}
+                        : omit(
+                              {
+                                  ...doc.metadata
+                              },
+                              omitMetadataKeys
+                          )
+            }))
         }
 
-        return docs
+        if (output === 'document') {
+            return docs
+        } else {
+            let finaltext = ''
+            for (const doc of docs) {
+                finaltext += `${doc.pageContent}\n`
+            }
+            return handleEscapeCharacters(finaltext, false)
+        }
     }
 }
 
@@ -146,7 +214,7 @@ class ApiLoader extends BaseDocumentLoader {
         this.method = method
     }
 
-    public async load(): Promise<Document[]> {
+    public async load(): Promise<IDocument[]> {
         if (this.method === 'POST') {
             return this.executePostRequest(this.url, this.headers, this.body)
         } else {
@@ -154,7 +222,7 @@ class ApiLoader extends BaseDocumentLoader {
         }
     }
 
-    protected async executeGetRequest(url: string, headers?: ICommonObject): Promise<Document[]> {
+    protected async executeGetRequest(url: string, headers?: ICommonObject): Promise<IDocument[]> {
         try {
             const config: AxiosRequestConfig = {}
             if (headers) {
@@ -174,7 +242,7 @@ class ApiLoader extends BaseDocumentLoader {
         }
     }
 
-    protected async executePostRequest(url: string, headers?: ICommonObject, body?: ICommonObject): Promise<Document[]> {
+    protected async executePostRequest(url: string, headers?: ICommonObject, body?: ICommonObject): Promise<IDocument[]> {
         try {
             const config: AxiosRequestConfig = {}
             if (headers) {

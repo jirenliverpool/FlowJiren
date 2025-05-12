@@ -1,12 +1,25 @@
 import { INodeData } from '../../src'
+import { VectorStore } from '@langchain/core/vectorstores'
 
-export const resolveVectorStoreOrRetriever = (nodeData: INodeData, vectorStore: any) => {
+export const resolveVectorStoreOrRetriever = (
+    nodeData: INodeData,
+    vectorStore: VectorStore,
+    metadataFilter?: string | object | undefined
+) => {
     const output = nodeData.outputs?.output as string
     const searchType = nodeData.outputs?.searchType as string
     const topK = nodeData.inputs?.topK as string
     const k = topK ? parseFloat(topK) : 4
+    const alpha = nodeData.inputs?.alpha
+
+    // If it is already pre-defined in lc_kwargs, then don't pass it again
+    const filter = vectorStore?.lc_kwargs?.filter ? undefined : metadataFilter
 
     if (output === 'retriever') {
+        const searchKwargs: Record<string, any> = {}
+        if (alpha !== undefined) {
+            searchKwargs.alpha = parseFloat(alpha)
+        }
         if ('mmr' === searchType) {
             const fetchK = nodeData.inputs?.fetchK as string
             const lambda = nodeData.inputs?.lambda as string
@@ -15,17 +28,24 @@ export const resolveVectorStoreOrRetriever = (nodeData: INodeData, vectorStore: 
             return vectorStore.asRetriever({
                 searchType: 'mmr',
                 k: k,
+                filter,
                 searchKwargs: {
+                    //...searchKwargs,
                     fetchK: f,
                     lambda: l
                 }
             })
         } else {
             // "searchType" is "similarity"
-            return vectorStore.asRetriever(k)
+            return vectorStore.asRetriever({
+                k: k,
+                filter: filter,
+                searchKwargs: Object.keys(searchKwargs).length > 0 ? searchKwargs : undefined
+            })
         }
     } else if (output === 'vectorStore') {
         ;(vectorStore as any).k = k
+        ;(vectorStore as any).filter = filter
         return vectorStore
     }
 }
@@ -73,3 +93,19 @@ export const addMMRInputParams = (inputs: any[]) => {
 
     inputs.push(...mmrInputParams)
 }
+
+export const howToUseFileUpload = `
+**File Upload**
+
+This allows file upload on the chat. Uploaded files will be upserted on the fly to the vector store.
+
+**Note:**
+- You can only turn on file upload for one vector store at a time.
+- At least one Document Loader node should be connected to the document input.
+- Document Loader should be file types like PDF, DOCX, TXT, etc.
+
+**How it works**
+- Uploaded files will have the metadata updated with the chatId.
+- This will allow the file to be associated with the chatId.
+- When querying, metadata will be filtered by chatId to retrieve files associated with the chatId.
+`

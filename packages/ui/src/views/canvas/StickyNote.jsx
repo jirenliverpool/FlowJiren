@@ -1,5 +1,5 @@
 import PropTypes from 'prop-types'
-import { useContext, useState } from 'react'
+import { useContext, useState, memo } from 'react'
 import { useSelector } from 'react-redux'
 
 // material-ui
@@ -9,7 +9,7 @@ import { useTheme } from '@mui/material/styles'
 import NodeCardWrapper from '@/ui-component/cards/NodeCardWrapper'
 import NodeTooltip from '@/ui-component/tooltip/NodeTooltip'
 import { IconButton, Box } from '@mui/material'
-import { IconCopy, IconTrash } from '@tabler/icons'
+import { IconCopy, IconTrash } from '@tabler/icons-react'
 import { Input } from '@/ui-component/input/Input'
 
 // const
@@ -31,13 +31,19 @@ const StickyNote = ({ data }) => {
         setOpen(true)
     }
 
+    const getBorderColor = () => {
+        if (data.selected) return theme.palette.primary.main
+        else if (theme?.customization?.isDarkMode) return theme.palette.grey[900] + 25
+        else return theme.palette.grey[900] + 50
+    }
+
     return (
         <>
             <NodeCardWrapper
                 content={false}
                 sx={{
                     padding: 0,
-                    borderColor: data.selected ? theme.palette.primary.main : theme.palette.text.secondary,
+                    borderColor: getBorderColor(),
                     backgroundColor: data.selected ? '#FFDC00' : '#FFE770'
                 }}
                 border={false}
@@ -100,4 +106,4 @@ StickyNote.propTypes = {
     data: PropTypes.object
 }
 
-export default StickyNote
+export default memo(StickyNote)

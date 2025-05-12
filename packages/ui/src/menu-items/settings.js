@@ -6,8 +6,10 @@ import {
     IconCopy,
     IconMessage,
     IconDatabaseExport,
-    IconAdjustmentsHorizontal
-} from '@tabler/icons'
+    IconAdjustmentsHorizontal,
+    IconUsers,
+    IconTemplate
+} from '@tabler/icons-react'
 
 // constant
 const icons = {
@@ -17,7 +19,9 @@ const icons = {
     IconCopy,
     IconMessage,
     IconDatabaseExport,
-    IconAdjustmentsHorizontal
+    IconAdjustmentsHorizontal,
+    IconUsers,
+    IconTemplate
 }
 
 // ==============================|| SETTINGS MENU ITEMS ||============================== //
@@ -35,6 +39,13 @@ const settings = {
             icon: icons.IconMessage
         },
         {
+            id: 'viewLeads',
+            title: 'View Leads',
+            type: 'item',
+            url: '',
+            icon: icons.IconUsers
+        },
+        {
             id: 'viewUpsertHistory',
             title: 'Upsert History',
             type: 'item',
@@ -47,6 +58,13 @@ const settings = {
             type: 'item',
             url: '',
             icon: icons.IconAdjustmentsHorizontal
+        },
+        {
+            id: 'saveAsTemplate',
+            title: 'Save As Template',
+            type: 'item',
+            url: '',
+            icon: icons.IconTemplate
         },
         {
             id: 'duplicateChatflow',

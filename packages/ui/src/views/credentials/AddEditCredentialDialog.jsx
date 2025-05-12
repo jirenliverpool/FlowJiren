@@ -14,7 +14,7 @@ import ConfirmDialog from '@/ui-component/dialog/ConfirmDialog'
 import CredentialInputHandler from './CredentialInputHandler'
 
 // Icons
-import { IconX } from '@tabler/icons'
+import { IconX } from '@tabler/icons-react'
 
 // API
 import credentialsApi from '@/api/credentials'
@@ -24,10 +24,12 @@ import useApi from '@/hooks/useApi'
 
 // utils
 import useNotifier from '@/utils/useNotifier'
+import { initializeDefaultNodeData } from '@/utils/genericHelper'
 
 // const
 import { baseURL, REDACTED_CREDENTIAL_VALUE } from '@/store/constant'
 import { HIDE_CANVAS_DIALOG, SHOW_CANVAS_DIALOG } from '@/store/actions'
+import keySVG from '@/assets/images/key.svg'
 
 const AddEditCredentialDialog = ({ show, dialogProps, onCancel, onConfirm, setError }) => {
     const portalElement = document.getElementById('portal')
@@ -71,14 +73,14 @@ const AddEditCredentialDialog = ({ show, dialogProps, onCancel, onConfirm, setEr
     }, [getSpecificComponentCredentialApi.data])
 
     useEffect(() => {
-        if (getSpecificCredentialApi.error) {
+        if (getSpecificCredentialApi.error && setError) {
             setError(getSpecificCredentialApi.error)
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [getSpecificCredentialApi.error])
 
     useEffect(() => {
-        if (getSpecificComponentCredentialApi.error) {
+        if (getSpecificComponentCredentialApi.error && setError) {
             setError(getSpecificComponentCredentialApi.error)
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -95,7 +97,8 @@ const AddEditCredentialDialog = ({ show, dialogProps, onCancel, onConfirm, setEr
             // When credential dialog is to add a new credential
             setName('')
             setCredential({})
-            setCredentialData({})
+            const defaultCredentialData = initializeDefaultNodeData(dialogProps.credentialComponent.inputs)
+            setCredentialData(defaultCredentialData)
             setComponentCredential(dialogProps.credentialComponent)
         }
 
@@ -132,7 +135,7 @@ const AddEditCredentialDialog = ({ show, dialogProps, onCancel, onConfirm, setEr
                 onConfirm(createResp.data.id)
             }
         } catch (error) {
-            setError(error)
+            if (setError) setError(error)
             enqueueSnackbar({
                 message: `Failed to add new Credential: ${
                     typeof error.response.data === 'object' ? error.response.data.message : error.response.data
@@ -184,7 +187,7 @@ const AddEditCredentialDialog = ({ show, dialogProps, onCancel, onConfirm, setEr
                 onConfirm(saveResp.data.id)
             }
         } catch (error) {
-            setError(error)
+            if (setError) setError(error)
             enqueueSnackbar({
                 message: `Failed to save Credential: ${
                     typeof error.response.data === 'object' ? error.response.data.message : error.response.data
@@ -235,6 +238,11 @@ const AddEditCredentialDialog = ({ show, dialogProps, onCancel, onConfirm, setEr
                                 }}
                                 alt={componentCredential.name}
                                 src={`${baseURL}/api/v1/components-credentials-icon/${componentCredential.name}`}
+                                onError={(e) => {
+                                    e.target.onerror = null
+                                    e.target.style.padding = '5px'
+                                    e.target.src = keySVG
+                                }}
                             />
                         </div>
                         {componentCredential.label}

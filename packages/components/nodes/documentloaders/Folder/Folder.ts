@@ -1,11 +1,13 @@
-import { INode, INodeData, INodeParams } from '../../../src/Interface'
+import { omit } from 'lodash'
+import { INode, INodeData, INodeOutputsValue, INodeParams } from '../../../src/Interface'
 import { TextSplitter } from 'langchain/text_splitter'
 import { TextLoader } from 'langchain/document_loaders/fs/text'
 import { DirectoryLoader } from 'langchain/document_loaders/fs/directory'
-import { JSONLoader } from 'langchain/document_loaders/fs/json'
-import { CSVLoader } from 'langchain/document_loaders/fs/csv'
-import { PDFLoader } from 'langchain/document_loaders/fs/pdf'
-import { DocxLoader } from 'langchain/document_loaders/fs/docx'
+import { JSONLinesLoader, JSONLoader } from 'langchain/document_loaders/fs/json'
+import { CSVLoader } from '@langchain/community/document_loaders/fs/csv'
+import { PDFLoader } from '@langchain/community/document_loaders/fs/pdf'
+import { DocxLoader } from '@langchain/community/document_loaders/fs/docx'
+import { handleEscapeCharacters } from '../../../src/utils'
 
 class Folder_DocumentLoaders implements INode {
     label: string
@@ -17,11 +19,12 @@ class Folder_DocumentLoaders implements INode {
     category: string
     baseClasses: string[]
     inputs: INodeParams[]
+    outputs: INodeOutputsValue[]
 
     constructor() {
         this.label = 'Folder with Files'
         this.name = 'folderFiles'
-        this.version = 1.0
+        this.version = 4.0
         this.type = 'Document'
         this.icon = 'folder.svg'
         this.category = 'Document Loaders'
@@ -47,11 +50,65 @@ class Folder_DocumentLoaders implements INode {
                 optional: true
             },
             {
-                label: 'Metadata',
-                name: 'metadata',
-                type: 'json',
+                label: 'Pdf Usage',
+                name: 'pdfUsage',
+                type: 'options',
+                description: 'Only when loading PDF files',
+                options: [
+                    {
+                        label: 'One document per page',
+                        name: 'perPage'
+                    },
+                    {
+                        label: 'One document per file',
+                        name: 'perFile'
+                    }
+                ],
+                default: 'perPage',
                 optional: true,
                 additionalParams: true
+            },
+            {
+                label: 'JSONL Pointer Extraction',
+                name: 'pointerName',
+                type: 'string',
+                description: 'Only when loading JSONL files',
+                placeholder: '<pointerName>',
+                optional: true,
+                additionalParams: true
+            },
+            {
+                label: 'Additional Metadata',
+                name: 'metadata',
+                type: 'json',
+                description: 'Additional metadata to be added to the extracted documents',
+                optional: true,
+                additionalParams: true
+            },
+            {
+                label: 'Omit Metadata Keys',
+                name: 'omitMetadataKeys',
+                type: 'string',
+                rows: 4,
+                description:
+                    'Each document loader comes with a default set of metadata keys that are extracted from the document. You can use this field to omit some of the default metadata keys. The value should be a list of keys, seperated by comma. Use * to omit all metadata keys execept the ones you specify in the Additional Metadata field',
+                placeholder: 'key1, key2, key3.nestedKey1',
+                optional: true,
+                additionalParams: true
+            }
+        ]
+        this.outputs = [
+            {
+                label: 'Document',
+                name: 'document',
+                description: 'Array of document objects containing metadata and pageContent',
+                baseClasses: [...this.baseClasses, 'json']
+            },
+            {
+                label: 'Text',
+                name: 'text',
+                description: 'Concatenated string from pageContent of documents',
+                baseClasses: ['string', 'json']
             }
         ]
     }
@@ -61,16 +118,33 @@ class Folder_DocumentLoaders implements INode {
         const folderPath = nodeData.inputs?.folderPath as string
         const metadata = nodeData.inputs?.metadata
         const recursive = nodeData.inputs?.recursive as boolean
+        const pdfUsage = nodeData.inputs?.pdfUsage
+        const pointerName = nodeData.inputs?.pointerName as string
+        const _omitMetadataKeys = nodeData.inputs?.omitMetadataKeys as string
+        const output = nodeData.outputs?.output as string
+
+        let omitMetadataKeys: string[] = []
+        if (_omitMetadataKeys) {
+            omitMetadataKeys = _omitMetadataKeys.split(',').map((key) => key.trim())
+        }
 
         const loader = new DirectoryLoader(
             folderPath,
             {
                 '.json': (path) => new JSONLoader(path),
+                '.jsonl': (blob) => new JSONLinesLoader(blob, '/' + pointerName.trim()),
                 '.txt': (path) => new TextLoader(path),
                 '.csv': (path) => new CSVLoader(path),
+                '.xls': (path) => new CSVLoader(path),
+                '.xlsx': (path) => new CSVLoader(path),
+                '.doc': (path) => new DocxLoader(path),
                 '.docx': (path) => new DocxLoader(path),
-                // @ts-ignore
-                '.pdf': (path) => new PDFLoader(path, { pdfjs: () => import('pdf-parse/lib/pdf.js/v1.10.100/build/pdf.js') }),
+                '.pdf': (path) =>
+                    pdfUsage === 'perFile'
+                        ? // @ts-ignore
+                          new PDFLoader(path, { splitPages: false, pdfjs: () => import('pdf-parse/lib/pdf.js/v1.10.100/build/pdf.js') })
+                        : // @ts-ignore
+                          new PDFLoader(path, { pdfjs: () => import('pdf-parse/lib/pdf.js/v1.10.100/build/pdf.js') }),
                 '.aspx': (path) => new TextLoader(path),
                 '.asp': (path) => new TextLoader(path),
                 '.cpp': (path) => new TextLoader(path), // C++
@@ -111,28 +185,53 @@ class Folder_DocumentLoaders implements INode {
         let docs = []
 
         if (textSplitter) {
-            docs = await loader.loadAndSplit(textSplitter)
+            docs = await loader.load()
+            docs = await textSplitter.splitDocuments(docs)
         } else {
             docs = await loader.load()
         }
 
         if (metadata) {
             const parsedMetadata = typeof metadata === 'object' ? metadata : JSON.parse(metadata)
-            let finaldocs = []
-            for (const doc of docs) {
-                const newdoc = {
-                    ...doc,
-                    metadata: {
-                        ...doc.metadata,
-                        ...parsedMetadata
-                    }
-                }
-                finaldocs.push(newdoc)
-            }
-            return finaldocs
+            docs = docs.map((doc) => ({
+                ...doc,
+                metadata:
+                    _omitMetadataKeys === '*'
+                        ? {
+                              ...parsedMetadata
+                          }
+                        : omit(
+                              {
+                                  ...doc.metadata,
+                                  ...parsedMetadata
+                              },
+                              omitMetadataKeys
+                          )
+            }))
+        } else {
+            docs = docs.map((doc) => ({
+                ...doc,
+                metadata:
+                    _omitMetadataKeys === '*'
+                        ? {}
+                        : omit(
+                              {
+                                  ...doc.metadata
+                              },
+                              omitMetadataKeys
+                          )
+            }))
         }
 
-        return docs
+        if (output === 'document') {
+            return docs
+        } else {
+            let finaltext = ''
+            for (const doc of docs) {
+                finaltext += `${doc.pageContent}\n`
+            }
+            return handleEscapeCharacters(finaltext, false)
+        }
     }
 }
 

@@ -1,13 +1,11 @@
-import { ChatOpenAI } from '@langchain/openai'
 import { APIChain, createOpenAPIChain } from 'langchain/chains'
-import { ICommonObject, INode, INodeData, INodeParams } from '../../../src/Interface'
+import { ICommonObject, INode, INodeData, INodeParams, IServerSideEventStreamer } from '../../../src/Interface'
 import { getBaseClasses } from '../../../src/utils'
 import { ConsoleCallbackHandler, CustomChainHandler, additionalCallbacks } from '../../../src/handler'
 import { checkInputs, Moderation, streamResponse } from '../../moderation/Moderation'
 import { formatResponse } from '../../outputparsers/OutputParserHelpers'
-import { getStoragePath } from '../../../src'
-import fs from 'fs'
-import path from 'path'
+import { getFileFromStorage } from '../../../src'
+import { BaseChatModel } from '@langchain/core/language_models/chat_models'
 
 class OpenApiChain_Chains implements INode {
     label: string
@@ -31,9 +29,9 @@ class OpenApiChain_Chains implements INode {
         this.baseClasses = [this.type, ...getBaseClasses(APIChain)]
         this.inputs = [
             {
-                label: 'ChatOpenAI Model',
+                label: 'Chat Model',
                 name: 'model',
-                type: 'ChatOpenAI'
+                type: 'BaseChatModel'
             },
             {
                 label: 'YAML Link',
@@ -76,18 +74,24 @@ class OpenApiChain_Chains implements INode {
         const loggerHandler = new ConsoleCallbackHandler(options.logger)
         const callbacks = await additionalCallbacks(nodeData, options)
         const moderations = nodeData.inputs?.inputModeration as Moderation[]
+        const shouldStreamResponse = options.shouldStreamResponse
+        const sseStreamer: IServerSideEventStreamer = options.sseStreamer as IServerSideEventStreamer
+        const chatId = options.chatId
+
         if (moderations && moderations.length > 0) {
             try {
                 // Use the output of the moderation chain as input for the OpenAPI chain
                 input = await checkInputs(moderations, input)
             } catch (e) {
                 await new Promise((resolve) => setTimeout(resolve, 500))
-                streamResponse(options.socketIO && options.socketIOClientId, e.message, options.socketIO, options.socketIOClientId)
+                if (options.shouldStreamResponse) {
+                    streamResponse(sseStreamer, chatId, e.message)
+                }
                 return formatResponse(e.message)
             }
         }
-        if (options.socketIO && options.socketIOClientId) {
-            const handler = new CustomChainHandler(options.socketIO, options.socketIOClientId)
+        if (shouldStreamResponse) {
+            const handler = new CustomChainHandler(sseStreamer, chatId)
             const res = await chain.run(input, [loggerHandler, handler, ...callbacks])
             return res
         } else {
@@ -98,7 +102,7 @@ class OpenApiChain_Chains implements INode {
 }
 
 const initChain = async (nodeData: INodeData, options: ICommonObject) => {
-    const model = nodeData.inputs?.model as ChatOpenAI
+    const model = nodeData.inputs?.model as BaseChatModel
     const headers = nodeData.inputs?.headers as string
     const yamlLink = nodeData.inputs?.yamlLink as string
     const yamlFileBase64 = nodeData.inputs?.yamlFile as string
@@ -111,8 +115,7 @@ const initChain = async (nodeData: INodeData, options: ICommonObject) => {
         if (yamlFileBase64.startsWith('FILE-STORAGE::')) {
             const file = yamlFileBase64.replace('FILE-STORAGE::', '')
             const chatflowid = options.chatflowid
-            const fileInStorage = path.join(getStoragePath(), chatflowid, file)
-            const fileData = fs.readFileSync(fileInStorage)
+            const fileData = await getFileFromStorage(file, chatflowid)
             yamlString = fileData.toString()
         } else {
             const splitDataURI = yamlFileBase64.split(',')
@@ -125,7 +128,7 @@ const initChain = async (nodeData: INodeData, options: ICommonObject) => {
     return await createOpenAPIChain(yamlString, {
         llm: model,
         headers: typeof headers === 'object' ? headers : headers ? JSON.parse(headers) : {},
-        verbose: process.env.DEBUG === 'true' ? true : false
+        verbose: process.env.DEBUG === 'true'
     })
 }
 

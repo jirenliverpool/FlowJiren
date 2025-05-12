@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 
 // material-ui
 import { IconButton } from '@mui/material'
-import { IconEdit } from '@tabler/icons'
+import { IconEdit } from '@tabler/icons-react'
 
 // project import
 import { AsyncDropdown } from '@/ui-component/dropdown/AsyncDropdown'
@@ -12,12 +12,13 @@ import CredentialListDialog from '@/views/credentials/CredentialListDialog'
 
 // API
 import credentialsApi from '@/api/credentials'
+import { FLOWISE_CREDENTIAL_ID } from '@/store/constant'
 
 // ===========================|| CredentialInputHandler ||=========================== //
 
 const CredentialInputHandler = ({ inputParam, data, onSelect, disabled = false }) => {
     const ref = useRef(null)
-    const [credentialId, setCredentialId] = useState(data?.credential ?? '')
+    const [credentialId, setCredentialId] = useState(data?.credential || (data?.inputs && data.inputs[FLOWISE_CREDENTIAL_ID]) || '')
     const [showCredentialListDialog, setShowCredentialListDialog] = useState(false)
     const [credentialListDialogProps, setCredentialListDialogProps] = useState({})
     const [showSpecificCredentialDialog, setShowSpecificCredentialDialog] = useState(false)
@@ -89,7 +90,7 @@ const CredentialInputHandler = ({ inputParam, data, onSelect, disabled = false }
     }
 
     useEffect(() => {
-        setCredentialId(data?.credential ?? '')
+        setCredentialId(data?.credential || (data?.inputs && data.inputs[FLOWISE_CREDENTIAL_ID]) || '')
     }, [data])
 
     return (

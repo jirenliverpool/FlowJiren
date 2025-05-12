@@ -23,6 +23,27 @@ const getAllNodes = async () => {
     }
 }
 
+// Get all component nodes for a specific category
+const getAllNodesForCategory = async (category: string) => {
+    try {
+        const appServer = getRunningExpressApp()
+        const dbResponse = []
+        for (const nodeName in appServer.nodesPool.componentNodes) {
+            const componentNode = appServer.nodesPool.componentNodes[nodeName]
+            if (componentNode.category === category) {
+                const clonedNode = cloneDeep(componentNode)
+                dbResponse.push(clonedNode)
+            }
+        }
+        return dbResponse
+    } catch (error) {
+        throw new InternalFlowiseError(
+            StatusCodes.INTERNAL_SERVER_ERROR,
+            `Error: nodesService.getAllNodesForCategory - ${getErrorMessage(error)}`
+        )
+    }
+}
+
 // Get specific component node via name
 const getNodeByName = async (nodeName: string) => {
     try {
@@ -76,7 +97,10 @@ const getSingleNodeAsyncOptions = async (nodeName: string, requestBody: any): Pr
 
                 const dbResponse: INodeOptionsValue[] = await nodeInstance.loadMethods![methodName]!.call(nodeInstance, nodeData, {
                     appDataSource: appServer.AppDataSource,
-                    databaseEntities: databaseEntities
+                    databaseEntities: databaseEntities,
+                    componentNodes: appServer.nodesPool.componentNodes,
+                    previousNodes: requestBody.previousNodes,
+                    currentNode: requestBody.currentNode
                 })
 
                 return dbResponse
@@ -102,6 +126,13 @@ const executeCustomFunction = async (requestBody: any) => {
         const functionInputVariables = Object.fromEntries(
             [...(body?.javascriptFunction ?? '').matchAll(/\$([a-zA-Z0-9_]+)/g)].map((g) => [g[1], undefined])
         )
+        if (functionInputVariables && Object.keys(functionInputVariables).length) {
+            for (const key in functionInputVariables) {
+                if (key.includes('vars')) {
+                    delete functionInputVariables[key]
+                }
+            }
+        }
         const nodeData = { inputs: { functionInputVariables, ...body } }
         if (Object.prototype.hasOwnProperty.call(appServer.nodesPool.componentNodes, 'customFunction')) {
             try {
@@ -138,5 +169,6 @@ export default {
     getNodeByName,
     getSingleNodeIcon,
     getSingleNodeAsyncOptions,
-    executeCustomFunction
+    executeCustomFunction,
+    getAllNodesForCategory
 }

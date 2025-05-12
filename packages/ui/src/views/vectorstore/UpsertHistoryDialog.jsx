@@ -32,7 +32,7 @@ import {
 } from '@mui/material'
 import { useTheme } from '@mui/material/styles'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
-import { IconChevronsUp, IconChevronsDown, IconTrash, IconX } from '@tabler/icons'
+import { IconChevronsUp, IconChevronsDown, IconTrash, IconX } from '@tabler/icons-react'
 
 // Project imports
 import { TableViewOnly } from '@/ui-component/table/Table'
@@ -157,11 +157,13 @@ function UpsertHistoryRow(props) {
                                                 </div>
                                             </AccordionSummary>
                                             <AccordionDetails>
-                                                <TableViewOnly
-                                                    sx={{ minWidth: 150 }}
-                                                    rows={node.paramValues}
-                                                    columns={Object.keys(node.paramValues[0])}
-                                                />
+                                                {node.paramValues[0] && (
+                                                    <TableViewOnly
+                                                        sx={{ minWidth: 150 }}
+                                                        rows={node.paramValues}
+                                                        columns={Object.keys(node.paramValues[0])}
+                                                    />
+                                                )}
                                             </AccordionDetails>
                                         </Accordion>
                                     )
@@ -195,7 +197,7 @@ const UpsertHistoryDialog = ({ show, dialogProps, onCancel }) => {
     const closeSnackbar = (...args) => dispatch(closeSnackbarAction(...args))
 
     const [chatflowUpsertHistory, setChatflowUpsertHistory] = useState([])
-    const [startDate, setStartDate] = useState(new Date().setMonth(new Date().getMonth() - 1))
+    const [startDate, setStartDate] = useState(new Date(new Date().setMonth(new Date().getMonth() - 1)))
     const [endDate, setEndDate] = useState(new Date())
     const [selected, setSelected] = useState([])
 
@@ -209,17 +211,21 @@ const UpsertHistoryDialog = ({ show, dialogProps, onCancel }) => {
     }
 
     const onStartDateSelected = (date) => {
-        setStartDate(date)
+        const updatedDate = new Date(date)
+        updatedDate.setHours(0, 0, 0, 0)
+        setStartDate(updatedDate)
         getUpsertHistoryApi.request(dialogProps.chatflow.id, {
-            startDate: date,
+            startDate: updatedDate,
             endDate: endDate
         })
     }
 
     const onEndDateSelected = (date) => {
-        setEndDate(date)
+        const updatedDate = new Date(date)
+        updatedDate.setHours(23, 59, 59, 999)
+        setEndDate(updatedDate)
         getUpsertHistoryApi.request(dialogProps.chatflow.id, {
-            endDate: date,
+            endDate: updatedDate,
             startDate: startDate
         })
     }
@@ -291,7 +297,7 @@ const UpsertHistoryDialog = ({ show, dialogProps, onCancel }) => {
 
         return () => {
             setChatflowUpsertHistory([])
-            setStartDate(new Date().setMonth(new Date().getMonth() - 1))
+            setStartDate(new Date(new Date().setMonth(new Date().getMonth() - 1)))
             setEndDate(new Date())
         }
 

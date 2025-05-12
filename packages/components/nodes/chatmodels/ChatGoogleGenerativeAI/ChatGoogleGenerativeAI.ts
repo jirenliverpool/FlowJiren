@@ -1,10 +1,11 @@
 import { HarmBlockThreshold, HarmCategory } from '@google/generative-ai'
 import type { SafetySetting } from '@google/generative-ai'
-import { ChatGoogleGenerativeAI, GoogleGenerativeAIChatInput } from '@langchain/google-genai'
 import { BaseCache } from '@langchain/core/caches'
-import { ICommonObject, INode, INodeData, INodeOptionsValue, INodeParams } from '../../../src/Interface'
+import { ICommonObject, IMultiModalOption, INode, INodeData, INodeOptionsValue, INodeParams } from '../../../src/Interface'
 import { convertMultiOptionsToStringArray, getBaseClasses, getCredentialData, getCredentialParam } from '../../../src/utils'
 import { getModels, MODEL_TYPE } from '../../../src/modelLoader'
+import { ChatGoogleGenerativeAI, GoogleGenerativeAIChatInput } from './FlowiseChatGoogleGenerativeAI'
+import type FlowiseGoogleAICacheManager from '../../cache/GoogleGenerativeAIContextCache/FlowiseGoogleAICacheManager'
 
 class GoogleGenerativeAI_ChatModels implements INode {
     label: string
@@ -21,7 +22,7 @@ class GoogleGenerativeAI_ChatModels implements INode {
     constructor() {
         this.label = 'ChatGoogleGenerativeAI'
         this.name = 'chatGoogleGenerativeAI'
-        this.version = 2.0
+        this.version = 3.0
         this.type = 'ChatGoogleGenerativeAI'
         this.icon = 'GoogleGemini.svg'
         this.category = 'Chat Models'
@@ -43,11 +44,26 @@ class GoogleGenerativeAI_ChatModels implements INode {
                 optional: true
             },
             {
+                label: 'Context Cache',
+                name: 'contextCache',
+                type: 'GoogleAICacheManager',
+                optional: true
+            },
+            {
                 label: 'Model Name',
                 name: 'modelName',
                 type: 'asyncOptions',
                 loadMethod: 'listModels',
-                default: 'gemini-pro'
+                default: 'gemini-1.5-flash-latest'
+            },
+            {
+                label: 'Custom Model Name',
+                name: 'customModelName',
+                type: 'string',
+                placeholder: 'gemini-1.5-pro-exp-0801',
+                description: 'Custom model name to use. If provided, it will override the model selected',
+                additionalParams: true,
+                optional: true
             },
             {
                 label: 'Temperature',
@@ -56,6 +72,14 @@ class GoogleGenerativeAI_ChatModels implements INode {
                 step: 0.1,
                 default: 0.9,
                 optional: true
+            },
+            {
+                label: 'Streaming',
+                name: 'streaming',
+                type: 'boolean',
+                default: true,
+                optional: true,
+                additionalParams: true
             },
             {
                 label: 'Max Output Tokens',
@@ -139,6 +163,23 @@ class GoogleGenerativeAI_ChatModels implements INode {
                 ],
                 optional: true,
                 additionalParams: true
+            },
+            {
+                label: 'Base URL',
+                name: 'baseUrl',
+                type: 'string',
+                description: 'Base URL for the API. Leave empty to use the default.',
+                optional: true,
+                additionalParams: true
+            },
+            {
+                label: 'Allow Image Uploads',
+                name: 'allowImageUploads',
+                type: 'boolean',
+                description:
+                    'Allow image input. Refer to the <a href="https://docs.flowiseai.com/using-flowise/uploads#image" target="_blank">docs</a> for more details.',
+                default: false,
+                optional: true
             }
         ]
     }
@@ -156,26 +197,31 @@ class GoogleGenerativeAI_ChatModels implements INode {
 
         const temperature = nodeData.inputs?.temperature as string
         const modelName = nodeData.inputs?.modelName as string
+        const customModelName = nodeData.inputs?.customModelName as string
         const maxOutputTokens = nodeData.inputs?.maxOutputTokens as string
         const topP = nodeData.inputs?.topP as string
         const topK = nodeData.inputs?.topK as string
         const harmCategory = nodeData.inputs?.harmCategory as string
         const harmBlockThreshold = nodeData.inputs?.harmBlockThreshold as string
         const cache = nodeData.inputs?.cache as BaseCache
+        const contextCache = nodeData.inputs?.contextCache as FlowiseGoogleAICacheManager
+        const streaming = nodeData.inputs?.streaming as boolean
+        const baseUrl = nodeData.inputs?.baseUrl as string | undefined
+
+        const allowImageUploads = nodeData.inputs?.allowImageUploads as boolean
 
         const obj: Partial<GoogleGenerativeAIChatInput> = {
             apiKey: apiKey,
-            modelName: modelName,
-            maxOutputTokens: 2048
+            modelName: customModelName || modelName,
+            streaming: streaming ?? true
         }
 
         if (maxOutputTokens) obj.maxOutputTokens = parseInt(maxOutputTokens, 10)
-
-        const model = new ChatGoogleGenerativeAI(obj)
-        if (topP) model.topP = parseFloat(topP)
-        if (topK) model.topK = parseFloat(topK)
-        if (cache) model.cache = cache
-        if (temperature) model.temperature = parseFloat(temperature)
+        if (topP) obj.topP = parseFloat(topP)
+        if (topK) obj.topK = parseFloat(topK)
+        if (cache) obj.cache = cache
+        if (temperature) obj.temperature = parseFloat(temperature)
+        if (baseUrl) obj.baseUrl = baseUrl
 
         // Safety Settings
         let harmCategories: string[] = convertMultiOptionsToStringArray(harmCategory)
@@ -188,7 +234,17 @@ class GoogleGenerativeAI_ChatModels implements INode {
                 threshold: harmBlockThresholds[index] as HarmBlockThreshold
             }
         })
-        if (safetySettings.length > 0) model.safetySettings = safetySettings
+        if (safetySettings.length > 0) obj.safetySettings = safetySettings
+
+        const multiModalOption: IMultiModalOption = {
+            image: {
+                allowImageUploads: allowImageUploads ?? false
+            }
+        }
+
+        const model = new ChatGoogleGenerativeAI(nodeData.id, obj)
+        model.setMultiModalOption(multiModalOption)
+        if (contextCache) model.setContextCache(contextCache)
 
         return model
     }
